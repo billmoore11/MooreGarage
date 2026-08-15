@@ -1,0 +1,62 @@
+{
+  "name": "mooregarage-oil-tracker",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MooreGarage Personal Vehicle Oil Change Tracker",
+  "author": "MooreGarage",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "npx vite build",
+    "preview": "vite preview",
+    "desktop": "npx vite build && npx electron .",
+    "desktop:dev": "cross-env NODE_ENV=development npx electron .",
+    "dist:win": "npx vite build && npx electron-builder --win",
+    "android": "npx vite build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:apk": "npx vite build && npx cap sync android && cd android && .\\gradlew.bat assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "firebase": "^10.12.0",
+    "lucide-react": "^0.378.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "electron": "30.0.6",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.11"
+  },
+  "build": {
+    "appId": "com.mooregarage.oiltracker",
+    "productName": "MooreGarage",
+    "electronVersion": "30.0.6",
+    "directories": {
+      "output": "dist-installer"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ]
+  }
+}
