@@ -260,6 +260,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
               const url = new URL(window.location.href);
               url.searchParams.set('car', selectedVehicle.id);
               url.searchParams.set('cardOnly', 'true');
+
+              try {
+                const raw = localStorage.getItem('apexfleet_firebase_config_v1');
+                if (raw) {
+                  const parsed = JSON.parse(raw);
+                  if (parsed?.apiKey && parsed?.projectId) {
+                    url.searchParams.set('apiKey', parsed.apiKey);
+                    url.searchParams.set('projectId', parsed.projectId);
+                  }
+                }
+              } catch (e) {}
+
               navigator.clipboard.writeText(url.toString());
               alert(`Copied link for "${selectedVehicle.name}" to clipboard!\n\nSend this link to your iPhone user:\n${url.toString()}`);
             }}

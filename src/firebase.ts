@@ -36,6 +36,26 @@ const cleanStr = (val: any): string => {
 };
 
 export const getSavedFirebaseConfig = (): FirebaseConfig | null => {
+  // 1. Check URL Query Parameters for 1-click mobile auto-configuration links
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const qApiKey = cleanStr(params.get('apiKey') || params.get('key'));
+    const qProjectId = cleanStr(params.get('projectId') || params.get('pid') || params.get('proj'));
+    if (qApiKey && qProjectId) {
+      const cfg: FirebaseConfig = {
+        apiKey: qApiKey,
+        projectId: qProjectId,
+        authDomain: cleanStr(params.get('authDomain')) || `${qProjectId}.firebaseapp.com`,
+        storageBucket: cleanStr(params.get('storageBucket')) || `${qProjectId}.appspot.com`,
+      };
+      localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(cfg));
+      return cfg;
+    }
+  } catch (e) {
+    console.warn('Query params config parse error', e);
+  }
+
+  // 2. Check LocalStorage
   try {
     const raw = localStorage.getItem(FIREBASE_CONFIG_KEY);
     if (raw) {
@@ -46,7 +66,7 @@ export const getSavedFirebaseConfig = (): FirebaseConfig | null => {
     console.error('Failed to parse saved Firebase config', e);
   }
 
-  // Support environment variables (.env file or Vercel Environment Variables)
+  // 3. Support environment variables (.env file or Vercel Environment Variables)
   const envApiKey = cleanStr((import.meta as any).env?.VITE_FIREBASE_API_KEY);
   const envProjectId = cleanStr((import.meta as any).env?.VITE_FIREBASE_PROJECT_ID);
 
