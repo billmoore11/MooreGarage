@@ -12,6 +12,7 @@ import {
 import { Header } from './components/Header';
 import { VehicleSelector } from './components/VehicleSelector';
 import { Dashboard } from './components/Dashboard';
+import { SingleVehicleCardView } from './components/SingleVehicleCardView';
 import { OilChangeFormModal } from './components/OilChangeFormModal';
 import { VehicleFormModal } from './components/VehicleFormModal';
 import { FirebaseSettingsModal } from './components/FirebaseSettingsModal';
@@ -23,6 +24,7 @@ export const App: React.FC = () => {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [isFirebase, setIsFirebase] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isCardOnlyMode, setIsCardOnlyMode] = useState<boolean>(false);
 
   // Modal States
   const [isOilModalOpen, setIsOilModalOpen] = useState(false);
@@ -45,7 +47,25 @@ export const App: React.FC = () => {
       setIsFirebase(fb1);
       setFbError(err1 || err2);
 
+      // Check URL parameters for direct vehicle deep links or card-only mode
+      const params = new URLSearchParams(window.location.search);
+      const targetCar = (params.get('car') || params.get('v') || params.get('vehicle') || '').toLowerCase().trim();
+      const cardOnly = params.get('cardOnly') === 'true' || params.get('mode') === 'card';
+
+      if (cardOnly) {
+        setIsCardOnlyMode(true);
+      }
+
       if (vList.length > 0) {
+        if (targetCar) {
+          const match = vList.find(
+            (v) => v.id.toLowerCase() === targetCar || v.name.toLowerCase().includes(targetCar)
+          );
+          if (match) {
+            setSelectedVehicleId(match.id);
+            return;
+          }
+        }
         setSelectedVehicleId((prev) => (vList.some((v) => v.id === prev) ? prev : vList[0].id));
       }
     } catch (e: any) {
@@ -80,6 +100,7 @@ export const App: React.FC = () => {
     await upsertVehicle(vehicle);
     await loadData();
     setSelectedVehicleId(vehicle.id);
+    return true;
   };
 
   const handleDeleteVehicle = async (vehicleId: string) => {
@@ -96,17 +117,19 @@ export const App: React.FC = () => {
 
   return (
     <div>
-      <Header
-        vehicles={vehicles}
-        selectedVehicleId={selectedVehicleId}
-        onSelectVehicle={setSelectedVehicleId}
-        isFirebase={isFirebase}
-        onOpenAddVehicle={() => {
-          setEditingVehicle(null);
-          setIsVehicleModalOpen(true);
-        }}
-        onOpenFirebaseSettings={() => setIsFirebaseModalOpen(true)}
-      />
+      {!isCardOnlyMode && (
+        <Header
+          vehicles={vehicles}
+          selectedVehicleId={selectedVehicleId}
+          onSelectVehicle={setSelectedVehicleId}
+          isFirebase={isFirebase}
+          onOpenAddVehicle={() => {
+            setEditingVehicle(null);
+            setIsVehicleModalOpen(true);
+          }}
+          onOpenFirebaseSettings={() => setIsFirebaseModalOpen(true)}
+        />
+      )}
 
       <main className="app-layout">
         {fbError && (
@@ -141,6 +164,7 @@ export const App: React.FC = () => {
             </div>
           </div>
         )}
+
         {loading ? (
           <div className="card" style={{ padding: '4rem 2rem', textAlign: 'center' }}>
             <div style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>Loading Fleet Database...</div>
@@ -179,9 +203,27 @@ export const App: React.FC = () => {
               )}
             </div>
           </div>
+        ) : isCardOnlyMode && selectedVehicle ? (
+          /* Standalone Dedicated iPhone Card View */
+          <SingleVehicleCardView
+            vehicle={selectedVehicle}
+            records={records}
+            isFirebase={isFirebase}
+            onLogOilChange={() => {
+              setEditingOilRecord(null);
+              setIsOilModalOpen(true);
+            }}
+            onSaveVehicle={handleSaveVehicle}
+            onEditRecord={(record) => {
+              setEditingOilRecord(record);
+              setIsOilModalOpen(true);
+            }}
+            onDeleteRecord={handleDeleteOilChange}
+            onSwitchToFullFleet={() => setIsCardOnlyMode(false)}
+          />
         ) : (
           <>
-            {/* Vehicle Fleet Switcher */}
+            {/* Full Fleet View */}
             <VehicleSelector
               vehicles={vehicles}
               records={records}
