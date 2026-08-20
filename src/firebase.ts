@@ -29,6 +29,22 @@ export const getSavedFirebaseConfig = (): FirebaseConfig | null => {
   } catch (e) {
     console.error('Failed to parse saved Firebase config', e);
   }
+
+  // Support environment variables (.env file)
+  const envApiKey = (import.meta as any).env?.VITE_FIREBASE_API_KEY;
+  const envProjectId = (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID;
+
+  if (envApiKey && envProjectId) {
+    return {
+      apiKey: envApiKey,
+      projectId: envProjectId,
+      authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || '',
+      storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || '',
+      messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+      appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '',
+    };
+  }
+
   return null;
 };
 

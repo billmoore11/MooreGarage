@@ -5,7 +5,7 @@ import { MileageGauge } from './MileageGauge';
 import { HistoryTimeline } from './HistoryTimeline';
 import { IntervalEditModal } from './IntervalEditModal';
 import { VehiclePhotoModal } from './VehiclePhotoModal';
-import { Edit3, Trash2, Wrench, History, ChevronDown, ChevronUp, SlidersHorizontal, Camera } from 'lucide-react';
+import { Edit3, Trash2, Wrench, History, ChevronDown, ChevronUp, SlidersHorizontal, Camera, Share2 } from 'lucide-react';
 
 interface DashboardProps {
   selectedVehicle: Vehicle | null;
@@ -252,6 +252,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <button className="btn btn-secondary" onClick={() => setIsIntervalModalOpen(true)}>
             <SlidersHorizontal size={15} style={{ color: '#f59e0b' }} />
             <span>Custom Interval</span>
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.set('car', selectedVehicle.id);
+              url.searchParams.set('cardOnly', 'true');
+              navigator.clipboard.writeText(url.toString());
+              alert(`Copied link for "${selectedVehicle.name}" to clipboard!\n\nSend this link to your iPhone user:\n${url.toString()}`);
+            }}
+            title="Copy dedicated iPhone Card link to send to user"
+          >
+            <Share2 size={15} style={{ color: '#10b981' }} />
+            <span>Share iPhone Link</span>
           </button>
 
           <button className="btn btn-secondary" onClick={() => onEditVehicle(selectedVehicle)}>

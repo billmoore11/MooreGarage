@@ -15,7 +15,8 @@
     "dist:win": "npx vite build && npx electron-builder --win",
     "android": "npx vite build && npx cap sync android",
     "android:open": "npx cap open android",
-    "android:apk": "npx vite build && npx cap sync android && cd android && .\\gradlew.bat assembleDebug"
+    "android:apk": "npx vite build && npx cap sync android && cd android && .\\gradlew.bat assembleDebug",
+    "deploy:firebase": "npx vite build && npx firebase-tools deploy"
   },
   "dependencies": {
     "@capacitor/android": "^6.0.0",
