@@ -165,14 +165,10 @@ export const SingleVehicleCardView: React.FC<SingleVehicleCardViewProps> = ({
         {/* Gauge & Key Stats */}
         <div style={{ padding: '1.25rem' }}>
           <MileageGauge
-            currentMileage={vehicle.currentMileage}
-            lastMileage={statusInfo.lastMileage}
-            nextMileage={statusInfo.nextMileage}
-            oilIntervalMiles={vehicle.oilIntervalMiles}
-            status={statusInfo.status}
-            vehicleId={vehicle.id}
-            vehicleName={vehicle.name}
-            onOpenIntervalModal={() => setIsIntervalModalOpen(true)}
+            vehicle={vehicle}
+            statusInfo={statusInfo}
+            onLogOilChange={onLogOilChange}
+            onEditInterval={() => setIsIntervalModalOpen(true)}
           />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '1.25rem' }}>

@@ -258,7 +258,7 @@ export const MileageGauge: React.FC<MileageGaugeProps> = ({
       <div className="stats-grid">
         <div className="stat-item">
           <span className="stat-label">Current Odometer</span>
-          <span className="stat-value mono">{formatMileage(vehicle.currentMileage)}</span>
+          <span className="stat-value mono">{formatMileage(vehicle?.currentMileage ?? 0)}</span>
         </div>
 
         <div className="stat-item">
@@ -268,7 +268,7 @@ export const MileageGauge: React.FC<MileageGaugeProps> = ({
 
         <div className="stat-item">
           <span className="stat-label">Service Interval</span>
-          <span className="stat-value mono">{formatMileage(vehicle.oilIntervalMiles)} / {vehicle.oilIntervalMonths} mos</span>
+          <span className="stat-value mono">{formatMileage(vehicle?.oilIntervalMiles ?? 8000)} / {vehicle?.oilIntervalMonths ?? 6} mos</span>
         </div>
 
         <div className="stat-item">
