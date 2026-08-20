@@ -63,10 +63,12 @@ export const App: React.FC = () => {
           );
           if (match) {
             setSelectedVehicleId(match.id);
-            return;
+          } else {
+            setSelectedVehicleId((prev) => (vList.some((v) => v.id === prev) ? prev : vList[0].id));
           }
+        } else {
+          setSelectedVehicleId((prev) => (vList.some((v) => v.id === prev) ? prev : vList[0].id));
         }
-        setSelectedVehicleId((prev) => (vList.some((v) => v.id === prev) ? prev : vList[0].id));
       }
     } catch (e: any) {
       console.error('Error loading data in App', e);
