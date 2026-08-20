@@ -47,10 +47,28 @@ export const App: React.FC = () => {
       setIsFirebase(fb1);
       setFbError(err1 || err2);
 
-      // Check URL parameters for direct vehicle deep links or card-only mode
+      // Check URL parameters or saved device preference for direct vehicle card mode
+      const PINNED_CARD_KEY = 'mooregarage_pinned_card_v2';
       const params = new URLSearchParams(window.location.search);
-      const targetCar = (params.get('car') || params.get('v') || params.get('vehicle') || '').toLowerCase().trim();
-      const cardOnly = params.get('cardOnly') === 'true' || params.get('mode') === 'card';
+      let targetCar = (params.get('car') || params.get('v') || params.get('vehicle') || '').toLowerCase().trim();
+      let cardOnly = params.get('cardOnly') === 'true' || params.get('mode') === 'card';
+
+      if (targetCar && cardOnly) {
+        try {
+          localStorage.setItem(PINNED_CARD_KEY, JSON.stringify({ car: targetCar, cardOnly: true }));
+        } catch (e) {}
+      } else if (!targetCar && !cardOnly) {
+        try {
+          const saved = localStorage.getItem(PINNED_CARD_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed?.car) {
+              targetCar = parsed.car;
+              cardOnly = true;
+            }
+          }
+        } catch (e) {}
+      }
 
       if (cardOnly) {
         setIsCardOnlyMode(true);
@@ -136,7 +154,10 @@ export const App: React.FC = () => {
           <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-main)' }}>
             MooreGarage Card View
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={() => setIsCardOnlyMode(false)}>
+          <button className="btn btn-secondary btn-sm" onClick={() => {
+            try { localStorage.removeItem('mooregarage_pinned_card_v2'); } catch(e) {}
+            setIsCardOnlyMode(false);
+          }}>
             Show Full Fleet
           </button>
         </div>
@@ -230,7 +251,10 @@ export const App: React.FC = () => {
               setIsOilModalOpen(true);
             }}
             onDeleteRecord={handleDeleteOilChange}
-            onSwitchToFullFleet={() => setIsCardOnlyMode(false)}
+            onSwitchToFullFleet={() => {
+              try { localStorage.removeItem('mooregarage_pinned_card_v2'); } catch(e) {}
+              setIsCardOnlyMode(false);
+            }}
           />
         ) : (
           <>
