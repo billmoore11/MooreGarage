@@ -117,7 +117,7 @@ export const App: React.FC = () => {
 
   return (
     <div>
-      {!isCardOnlyMode && (
+      {!isCardOnlyMode ? (
         <Header
           vehicles={vehicles}
           selectedVehicleId={selectedVehicleId}
@@ -129,6 +129,15 @@ export const App: React.FC = () => {
           }}
           onOpenFirebaseSettings={() => setIsFirebaseModalOpen(true)}
         />
+      ) : (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)' }}>
+          <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-main)' }}>
+            MooreGarage Card View
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={() => setIsCardOnlyMode(false)}>
+            Show Full Fleet
+          </button>
+        </div>
       )}
 
       <main className="app-layout">

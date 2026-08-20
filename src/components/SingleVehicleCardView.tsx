@@ -27,7 +27,23 @@ export const SingleVehicleCardView: React.FC<SingleVehicleCardViewProps> = ({
   onDeleteRecord,
   onSwitchToFullFleet,
 }) => {
-  const statusInfo = calculateServiceStatus(vehicle, records);
+  if (!vehicle) {
+    return (
+      <div className="card" style={{ padding: '3rem 1.5rem', textAlign: 'center', maxWidth: '480px', margin: '2rem auto' }}>
+        <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '0.5rem' }}>Vehicle Card Unavailable</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+          The requested vehicle card could not be loaded or is not registered in your fleet.
+        </p>
+        {onSwitchToFullFleet && (
+          <button className="btn btn-primary" onClick={onSwitchToFullFleet}>
+            View Main Fleet Dashboard
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const statusInfo = calculateServiceStatus(vehicle, records || []);
   const vehicleRecords = records
     .filter((r) => r.vehicleId === vehicle.id)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
