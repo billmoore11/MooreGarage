@@ -17,15 +17,15 @@ export const MileageGauge: React.FC<MileageGaugeProps> = ({
   onEditInterval,
 }) => {
   const {
-    status,
-    lastMileage,
-    lastDate,
-    nextMileage,
-    milesRemaining,
-    percentRemaining,
-    estimatedDueDate,
-    daysRemaining,
-  } = statusInfo;
+    status = 'good',
+    lastMileage = null,
+    lastDate = null,
+    nextMileage = 8000,
+    milesRemaining = 8000,
+    percentRemaining = 100,
+    estimatedDueDate = null,
+    daysRemaining = null,
+  } = statusInfo || {};
 
   const getStatusBadge = () => {
     switch (status) {
