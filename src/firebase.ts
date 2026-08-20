@@ -1,17 +1,24 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  getDocs, 
-  doc, 
-  setDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  Firestore 
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  deleteDoc,
+  Firestore,
 } from 'firebase/firestore';
-import { Vehicle, OilChangeRecord, FirebaseConfig } from './types';
+import { Vehicle, OilChangeRecord } from './types';
 import { INITIAL_VEHICLES, INITIAL_OIL_CHANGES } from './sampleData';
+
+export interface FirebaseConfig {
+  apiKey: string;
+  projectId: string;
+  authDomain?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+}
 
 const FIREBASE_CONFIG_KEY = 'apexfleet_firebase_config_v1';
 const LOCAL_VEHICLES_KEY = 'apexfleet_local_vehicles_v1';
@@ -22,26 +29,35 @@ let appInstance: FirebaseApp | null = null;
 let dbInstance: Firestore | null = null;
 export let lastFirebaseError: string | null = null;
 
+// Clean string helper to remove accidental quotes/spaces from env variables
+const cleanStr = (val: any): string => {
+  if (!val) return '';
+  return String(val).trim().replace(/^["']|["']$/g, '');
+};
+
 export const getSavedFirebaseConfig = (): FirebaseConfig | null => {
   try {
     const raw = localStorage.getItem(FIREBASE_CONFIG_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.apiKey && parsed?.projectId) return parsed;
+    }
   } catch (e) {
     console.error('Failed to parse saved Firebase config', e);
   }
 
-  // Support environment variables (.env file)
-  const envApiKey = (import.meta as any).env?.VITE_FIREBASE_API_KEY;
-  const envProjectId = (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID;
+  // Support environment variables (.env file or Vercel Environment Variables)
+  const envApiKey = cleanStr((import.meta as any).env?.VITE_FIREBASE_API_KEY);
+  const envProjectId = cleanStr((import.meta as any).env?.VITE_FIREBASE_PROJECT_ID);
 
   if (envApiKey && envProjectId) {
     return {
       apiKey: envApiKey,
       projectId: envProjectId,
-      authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || '',
-      storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || '',
-      messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-      appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '',
+      authDomain: cleanStr((import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN) || `${envProjectId}.firebaseapp.com`,
+      storageBucket: cleanStr((import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET) || `${envProjectId}.appspot.com`,
+      messagingSenderId: cleanStr((import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || '',
+      appId: cleanStr((import.meta as any).env?.VITE_FIREBASE_APP_ID) || '',
     };
   }
 
@@ -80,6 +96,14 @@ export const initFirebase = (): { app: FirebaseApp | null; db: Firestore | null 
     lastFirebaseError = e?.message || String(e);
     return { app: null, db: null };
   }
+};
+
+// Timeout wrapper helper to guarantee network calls never hang indefinitely
+const withTimeout = <T>(promise: Promise<T>, ms: number = 3500, fallback: T): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
 };
 
 // ----------------------------------------------------
@@ -236,7 +260,7 @@ export const fetchVehicles = async (): Promise<{ vehicles: Vehicle[]; isFirebase
   if (db) {
     lastFirebaseError = null;
     let caughtError: string | null = null;
-    
+
     const vehicleGroups = new Map<string, {
       id: string;
       name: string;
@@ -248,85 +272,62 @@ export const fetchVehicles = async (): Promise<{ vehicles: Vehicle[]; isFirebase
       'vehicles', 'logs', 'cars', 'fleet', 'Vehicles', 'Cars', 'Fleet', 
       'Logs', 'my_vehicles', 'garage', 'oil_changes', 'records'
     ];
-    
-    for (const collName of possibleCollections) {
+
+    const fetchCollection = async (collName: string) => {
       try {
         const snap = await getDocs(collection(db, collName));
-        if (!snap.empty) {
-          snap.forEach(d => {
-            const data = d.data();
-            const carName = (data.car || data.name || data.vehicleName || data.vehicle_name || data.title || '').toString().trim();
-            const miles = Number(data.miles ?? data.mileage ?? data.currentMileage ?? data.odometer ?? 0);
-
-            if (carName) {
-              const vehicleId = carName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-              const existing = vehicleGroups.get(vehicleId);
-              
-              if (!existing) {
-                vehicleGroups.set(vehicleId, {
-                  id: vehicleId,
-                  name: carName,
-                  maxMiles: miles,
-                  rawDoc: data
-                });
-              } else {
-                if (miles > existing.maxMiles) {
-                  existing.maxMiles = miles;
-                }
-                // Prefer document with more fields if existing was from a log
-                if (data.oilIntervalMiles || data.oil_interval_miles || data.oilIntervalKm) {
-                  existing.rawDoc = { ...existing.rawDoc, ...data };
-                }
-              }
-            } else if (data.make || data.model || data.year) {
-              const vName = `${data.year || ''} ${data.make || ''} ${data.model || ''}`.trim() || d.id;
-              const vehicleId = d.id;
-              vehicleGroups.set(vehicleId, {
-                id: vehicleId,
-                name: vName,
-                maxMiles: miles,
-                rawDoc: data
-              });
-            }
-          });
-        }
+        return { collName, docs: snap.docs.map(d => d.data()) };
       } catch (e: any) {
-        console.warn(`Firebase query for '${collName}' error`, e);
-        caughtError = e?.message || String(e);
+        if (!caughtError) caughtError = e?.message || String(e);
+        return { collName, docs: [] };
+      }
+    };
+
+    // Execute queries in parallel with a 3.5s timeout guard
+    const queryPromises = possibleCollections.map(name => withTimeout(fetchCollection(name), 3500, { collName: name, docs: [] }));
+    const results = await Promise.all(queryPromises);
+
+    for (const res of results) {
+      for (const data of res.docs) {
+        const carName = (data.car || data.name || data.vehicleName || data.vehicle_name || data.title || '').toString().trim();
+        const miles = Number(data.miles ?? data.mileage ?? data.currentMileage ?? data.odometer ?? 0);
+
+        if (carName) {
+          const vehicleId = carName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          const existing = vehicleGroups.get(vehicleId);
+
+          if (!existing || miles > existing.maxMiles) {
+            vehicleGroups.set(vehicleId, {
+              id: vehicleId,
+              name: carName,
+              maxMiles: miles,
+              rawDoc: data,
+            });
+          }
+        }
       }
     }
 
     if (vehicleGroups.size > 0) {
-      const vehiclesList: Vehicle[] = Array.from(vehicleGroups.values()).map(g => {
-        const d = g.rawDoc;
-        const savedInterval = customIntervals[g.id];
-        
-        const oilIntervalMiles = savedInterval
-          ? savedInterval.miles
-          : Number(d.oilIntervalMiles ?? d.oil_interval_miles ?? d.oilIntervalKm ?? d.intervalKm ?? d.interval ?? 8000);
-        
-        const oilIntervalMonths = savedInterval
-          ? savedInterval.months
-          : Number(d.oilIntervalMonths ?? d.oil_interval_months ?? d.intervalMonths ?? 6);
-
+      const vehiclesList: Vehicle[] = Array.from(vehicleGroups.values()).map(({ id, name, maxMiles, rawDoc }) => {
+        const saved = customIntervals[id];
         return {
-          id: g.id,
-          name: g.name,
-          year: Number(d.year) || new Date().getFullYear(),
-          make: d.make || '',
-          model: d.model || '',
-          trim: d.trim || '',
-          licensePlate: d.licensePlate || d.plate || '',
-          vin: d.vin || '',
-          currentMileage: g.maxMiles,
-          oilIntervalMiles,
-          oilIntervalMonths,
-          preferredOil: d.preferredOil || d.oil || d.oilType || '5W-30 Full Synthetic',
-          oilCapacity: d.oilCapacity || d.capacity || '',
-          filterPartNumber: d.filterPartNumber || d.filter || '',
-          notes: d.notes || d.comments || '',
-          imageUrl: d.imageUrl || d.photo || '',
-          createdAt: d.createdAt || new Date().toISOString(),
+          id,
+          name,
+          make: rawDoc.make || name.split(' ')[1] || 'Vehicle',
+          model: rawDoc.model || name.split(' ').slice(2).join(' ') || name,
+          year: Number(rawDoc.year) || (parseInt(name, 10) || 2024),
+          trim: rawDoc.trim || '',
+          currentMileage: maxMiles,
+          oilIntervalMiles: saved?.miles || Number(rawDoc.oilIntervalMiles ?? rawDoc.intervalMiles ?? 8000),
+          oilIntervalMonths: saved?.months || Number(rawDoc.oilIntervalMonths ?? rawDoc.intervalMonths ?? 6),
+          preferredOil: rawDoc.preferredOil || rawDoc.oil || rawDoc.oilType || '5W-30 Synthetic',
+          oilCapacity: rawDoc.oilCapacity || rawDoc.capacity || '',
+          filterPartNumber: rawDoc.filterPartNumber || rawDoc.filter || '',
+          licensePlate: rawDoc.licensePlate || rawDoc.plate || '',
+          imageUrl: rawDoc.imageUrl || rawDoc.image || rawDoc.photo || '',
+          notes: rawDoc.notes || '',
+          createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
       });
@@ -340,7 +341,7 @@ export const fetchVehicles = async (): Promise<{ vehicles: Vehicle[]; isFirebase
     }
     return { vehicles: [], isFirebase: true };
   }
-  
+
   // Local Storage fallback
   const localList = getLocalVehicles().map(v => {
     const saved = customIntervals[v.id];
@@ -352,8 +353,65 @@ export const fetchVehicles = async (): Promise<{ vehicles: Vehicle[]; isFirebase
   return { vehicles: localList, isFirebase: false };
 };
 
+export const fetchOilChanges = async (vehicleId?: string): Promise<{ records: OilChangeRecord[]; isFirebase: boolean; error?: string }> => {
+  const { db } = initFirebase();
+  if (db) {
+    const recordMap = new Map<string, OilChangeRecord>();
+    const possibleCollections = [
+      'logs', 'oil_changes', 'oilChanges', 'oil_logs', 'services', 'records', 'history'
+    ];
+
+    const fetchCollection = async (collName: string) => {
+      try {
+        const snap = await getDocs(collection(db, collName));
+        return snap.docs.map(d => ({ id: d.id, data: d.data() }));
+      } catch (e: any) {
+        return [];
+      }
+    };
+
+    const queryPromises = possibleCollections.map(name => withTimeout(fetchCollection(name), 3500, []));
+    const results = await Promise.all(queryPromises);
+
+    for (const docs of results) {
+      for (const { id, data } of docs) {
+        const carName = (data.car || data.name || data.vehicleName || data.vehicleId || '').toString().trim();
+        const logVehicleId = carName ? carName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : (data.vehicleId || '');
+
+        if (!vehicleId || logVehicleId === vehicleId || data.vehicleId === vehicleId) {
+          const recDate = parseDateValue(data.date, data.timestamp);
+          const miles = Number(data.miles ?? data.mileage ?? data.odometer ?? 0);
+          const tsMs = parseTimestampMs(data.date, data.timestamp);
+
+          recordMap.set(id, {
+            id,
+            vehicleId: logVehicleId || vehicleId || '',
+            date: recDate,
+            mileage: miles,
+            oilBrandGrade: data.oilBrandGrade || data.oil || data.oilType || 'Synthetic Oil',
+            filterBrandPart: data.filterBrandPart || data.filter || '',
+            cost: Number(data.cost ?? data.price ?? 0),
+            performedBy: String(data.performedBy || 'self').toLowerCase().includes('shop') ? 'shop' : 'self',
+            locationName: data.locationName || data.location || data.shop || '',
+            notes: data.notes || data.comments || '',
+            createdAt: new Date(tsMs || Date.now()).toISOString()
+          });
+        }
+      }
+    }
+
+    const records = Array.from(recordMap.values());
+    records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.mileage - a.mileage);
+    return { records, isFirebase: true };
+  }
+
+  const all = getLocalChanges();
+  const filtered = vehicleId ? all.filter(r => r.vehicleId === vehicleId) : all;
+  filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.mileage - a.mileage);
+  return { records: filtered, isFirebase: false };
+};
+
 export const upsertVehicle = async (vehicle: Vehicle): Promise<boolean> => {
-  // Always save custom interval to local store and Firestore
   saveCustomInterval(vehicle.id, vehicle.oilIntervalMiles, vehicle.oilIntervalMonths);
 
   const { db } = initFirebase();
@@ -365,7 +423,7 @@ export const upsertVehicle = async (vehicle: Vehicle): Promise<boolean> => {
       lastFirebaseError = e?.message || String(e);
     }
   }
-  
+
   const current = getLocalVehicles();
   const index = current.findIndex(v => v.id === vehicle.id);
   if (index >= 0) {
@@ -382,72 +440,51 @@ export const deleteVehicle = async (vehicleId: string): Promise<boolean> => {
   if (db) {
     try {
       await deleteDoc(doc(db, 'vehicles', vehicleId));
-    } catch (e: any) {
+    } catch (e) {
       console.error('Firebase delete vehicle failed', e);
+    }
+  }
+
+  const current = getLocalVehicles().filter(v => v.id !== vehicleId);
+  saveLocalVehicles(current);
+  return true;
+};
+
+export const upsertOilChange = async (record: OilChangeRecord): Promise<boolean> => {
+  const { db } = initFirebase();
+  if (db) {
+    try {
+      await setDoc(doc(db, 'oil_changes', record.id), record, { merge: true });
+    } catch (e: any) {
+      console.error('Firebase save oil change failed', e);
       lastFirebaseError = e?.message || String(e);
     }
   }
 
-  const currentVehicles = getLocalVehicles().filter(v => v.id !== vehicleId);
-  saveLocalVehicles(currentVehicles);
-
-  const currentChanges = getLocalChanges().filter(c => c.vehicleId !== vehicleId);
-  saveLocalChanges(currentChanges);
+  const current = getLocalChanges();
+  const index = current.findIndex(r => r.id === record.id);
+  if (index >= 0) {
+    current[index] = record;
+  } else {
+    current.unshift(record);
+  }
+  saveLocalChanges(current);
   return true;
 };
 
-export const fetchOilChanges = async (vehicleId?: string): Promise<{ records: OilChangeRecord[]; isFirebase: boolean; error?: string }> => {
+export const deleteOilChange = async (recordId: string): Promise<boolean> => {
   const { db } = initFirebase();
   if (db) {
-    const recordMap = new Map<string, OilChangeRecord>();
-    const possibleCollections = [
-      'logs', 'oil_changes', 'oilChanges', 'oil_logs', 'services', 'records', 'history'
-    ];
-
-    for (const collName of possibleCollections) {
-      try {
-        const snap = await getDocs(collection(db, collName));
-        if (!snap.empty) {
-          snap.forEach(d => {
-            const data = d.data();
-            const carName = (data.car || data.name || data.vehicleName || data.vehicleId || '').toString().trim();
-            const logVehicleId = carName ? carName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : (data.vehicleId || '');
-
-            if (!vehicleId || logVehicleId === vehicleId || data.vehicleId === vehicleId) {
-              const recDate = parseDateValue(data.date, data.timestamp);
-              const miles = Number(data.miles ?? data.mileage ?? data.odometer ?? 0);
-              const tsMs = parseTimestampMs(data.date, data.timestamp);
-
-              recordMap.set(d.id, {
-                id: d.id,
-                vehicleId: logVehicleId || vehicleId || '',
-                date: recDate,
-                mileage: miles,
-                oilBrandGrade: data.oilBrandGrade || data.oil || data.oilType || 'Synthetic Oil',
-                filterBrandPart: data.filterBrandPart || data.filter || '',
-                cost: Number(data.cost ?? data.price ?? 0),
-                performedBy: String(data.performedBy || 'self').toLowerCase().includes('shop') ? 'shop' : 'self',
-                locationName: data.locationName || data.location || data.shop || '',
-                notes: data.notes || data.comments || '',
-                createdAt: new Date(tsMs || Date.now()).toISOString()
-              });
-            }
-          });
-        }
-      } catch (e: any) {
-        console.warn(`Firestore query for '${collName}' error`, e);
-      }
+    try {
+      await deleteDoc(doc(db, 'oil_changes', recordId));
+    } catch (e) {
+      console.error('Firebase delete oil change failed', e);
     }
-
-    const records = Array.from(recordMap.values());
-    records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.mileage - a.mileage);
-    return { records, isFirebase: true };
   }
 
-  const all = getLocalChanges();
-  const filtered = vehicleId ? all.filter(r => r.vehicleId === vehicleId) : all;
-  filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.mileage - a.mileage);
-  return { records: filtered, isFirebase: false };
+  const current = getLocalChanges().filter(r => r.id !== recordId);
+  saveLocalChanges(current);
+  return true;
 };
 
 export const seedSampleDataToFirebase = async (): Promise<boolean> => {
@@ -462,68 +499,8 @@ export const seedSampleDataToFirebase = async (): Promise<boolean> => {
     }
     return true;
   } catch (e: any) {
-    console.error('Failed to seed sample data to Firebase', e);
+    console.error('Error seeding sample data to Firebase', e);
     lastFirebaseError = e?.message || String(e);
     return false;
   }
-};
-
-export const upsertOilChange = async (record: OilChangeRecord): Promise<boolean> => {
-  const { db } = initFirebase();
-  if (db) {
-    try {
-      await setDoc(doc(db, 'logs', record.id), {
-        car: record.vehicleId,
-        miles: record.mileage,
-        date: record.date,
-        timestamp: new Date(record.date).getTime(),
-        oil: record.oilBrandGrade,
-        filter: record.filterBrandPart,
-        cost: record.cost,
-        notes: record.notes || ''
-      });
-      await setDoc(doc(db, 'oil_changes', record.id), record);
-    } catch (e: any) {
-      console.error('Firebase save oil change failed', e);
-      lastFirebaseError = e?.message || String(e);
-    }
-  }
-
-  const current = getLocalChanges();
-  const index = current.findIndex(c => c.id === record.id);
-  if (index >= 0) {
-    current[index] = record;
-  } else {
-    current.unshift(record);
-  }
-  saveLocalChanges(current);
-
-  const vehicles = getLocalVehicles();
-  const vIndex = vehicles.findIndex(v => v.id === record.vehicleId);
-  if (vIndex >= 0 && record.mileage > vehicles[vIndex].currentMileage) {
-    vehicles[vIndex].currentMileage = record.mileage;
-    vehicles[vIndex].updatedAt = new Date().toISOString();
-    saveLocalVehicles(vehicles);
-    if (db) {
-      setDoc(doc(db, 'vehicles', vehicles[vIndex].id), vehicles[vIndex]).catch(console.error);
-    }
-  }
-
-  return true;
-};
-
-export const deleteOilChange = async (recordId: string): Promise<boolean> => {
-  const { db } = initFirebase();
-  if (db) {
-    try {
-      await deleteDoc(doc(db, 'logs', recordId));
-      await deleteDoc(doc(db, 'oil_changes', recordId));
-    } catch (e: any) {
-      console.error('Firebase delete oil change failed', e);
-    }
-  }
-
-  const current = getLocalChanges().filter(c => c.id !== recordId);
-  saveLocalChanges(current);
-  return true;
 };
