@@ -95,17 +95,32 @@ export const saveFirebaseConfig = (config: FirebaseConfig | null) => {
   lastFirebaseError = null;
 };
 
+const cleanProjectId = (val: any): string => {
+  if (!val) return '';
+  return String(val).trim().replace(/^["']|["']$/g, '').toLowerCase().replace(/[^a-z0-9\-]/g, '-');
+};
+
 export const initFirebase = (): { app: FirebaseApp | null; db: Firestore | null } => {
   if (dbInstance) return { app: appInstance, db: dbInstance };
 
-  const config = getSavedFirebaseConfig();
-  if (!config || !config.apiKey || !config.projectId) {
-    return { app: null, db: null };
-  }
-
   try {
+    const config = getSavedFirebaseConfig();
+    if (!config || !config.apiKey || !config.projectId) {
+      return { app: null, db: null };
+    }
+
+    const safeProjectId = cleanProjectId(config.projectId);
+    if (!safeProjectId) return { app: null, db: null };
+
+    const safeConfig: FirebaseConfig = {
+      ...config,
+      projectId: safeProjectId,
+      authDomain: config.authDomain || `${safeProjectId}.firebaseapp.com`,
+      storageBucket: config.storageBucket || `${safeProjectId}.appspot.com`,
+    };
+
     if (!getApps().length) {
-      appInstance = initializeApp(config);
+      appInstance = initializeApp(safeConfig);
     } else {
       appInstance = getApp();
     }
